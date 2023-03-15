@@ -1,9 +1,8 @@
-## This script extracts crime data from an api and loads it to an S3 bucket.
+## This script loads cost of living data from S3 and loads it to Snowflake.
 
 This code depends on a .env file placed in the root of the project with the following environment variables:
 
 ```
-RAPID_API_KEY
 SNOWFLAKE_USERNAME
 SNOWFLAKE_PASSWORD
 SNOWFLAKE_ACCOUNT
