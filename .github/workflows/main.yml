@@ -41,7 +41,7 @@ jobs:
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: real-estate-db
-          IMAGE_TAG: s3-test-dump
+          IMAGE_TAG: cost-of-living-data-loader
         run: |
           aws lambda update-function-code \
             --function-name load-cost-of-living-data-to-snowflake \
