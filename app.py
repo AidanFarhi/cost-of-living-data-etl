@@ -1,26 +1,46 @@
 import os
 import boto3
 import json
+import snowflake.connector
+import pandas as pd
 from dotenv import load_dotenv
 load_dotenv()
 
+"""
+# Set up connection to Snowflake
+conn = snowflake.connector.connect(
+    user='your_user',
+    password='your_password',
+    account='your_account',
+    warehouse='your_warehouse',
+    database='your_database',
+    schema='your_schema'
+)
 
-def load_results_to_s3():
-	client = boto3.client(
-	    's3', 
-	    endpoint_url='https://s3.amazonaws.com',
-	    aws_access_key_id=os.getenv('ACCESS_KEY'),
-	    aws_secret_access_key=os.getenv('SECRET_ACCESS_KEY')
-	)
-	json_data = json.dumps({'test': 'hello'})
-	client.put_object(
-		Bucket=os.getenv('BUCKET_NAME'), 
-		Key=f'real_estate/test_2.json',
-		Body=json_data
-	)
+# Create a Pandas DataFrame
+df = pd.DataFrame({
+    'column1': [1, 2, 3],
+    'column2': ['A', 'B', 'C'],
+    'column3': [True, False, True]
+})
+
+# Create a Snowflake table
+table_name = 'your_table'
+cur = conn.cursor()
+cur.execute(f"create table if not exists {table_name} (column1 int, column2 varchar, column3 boolean)")
+
+# Load the data from Pandas DataFrame into Snowflake
+query = f"insert into {table_name} values(%s, %s, %s)"
+data = df.values.tolist()
+cur.executemany(query, data)
+conn.commit()
+
+# Close the cursor and connection
+cur.close()
+conn.close()
+"""
 
 def main(event, context):
-	load_results_to_s3()
 	return {'statusCode': 200}
 
 
