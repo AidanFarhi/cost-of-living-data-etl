@@ -9,27 +9,30 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_expense_data():
-	bucket_name = os.getenv('BUCKET_NAME')
-	client = boto3.client(
-		's3', 
-		endpoint_url='https://s3.amazonaws.com',
-		aws_access_key_id=os.getenv('ACCESS_KEY'),
-		aws_secret_access_key=os.getenv('SECRET_ACCESS_KEY')
-	)
+def get_df_from_s3(client, bucket_name, category):
+	# TODO make the prefix dynamic. use current date?
 	objects_metadata = client.list_objects(
 		Bucket=bucket_name, Prefix='real_estate/cost_of_living/2023-03-15'
 	)
-	keys = [obj['Key'] for obj in objects_metadata['Contents'] if 'expenses' in obj['Key']]
+	keys = [obj['Key'] for obj in objects_metadata['Contents'] if category in obj['Key']]
 	objects = [client.get_object(Bucket=bucket_name, Key=key) for key in keys]
-	expenses_df = pd.concat([pd.read_csv(StringIO(obj['Body'].read().decode('utf-8'))) for obj in objects])
-	return expenses_df
+	df = pd.concat([pd.read_csv(StringIO(obj['Body'].read().decode('utf-8'))) for obj in objects])
+	return df
 
-def get_household_data(conn):
+def get_household_df(conn):
 	household_df = pd.read_sql('SELECT * FROM HOUSEHOLD', conn)
 	return household_df
 
-def transform_expense_data(expense_df):
+def transform_living_wage_df(living_wage_df):
+	living_wage_df = living_wage_df.rename(columns={
+		'wage_level': 'WAGE_LEVEL', 'county': 'COUNTY', 'num_children': 'CHILDREN',
+		'num_adults': 'ADULTS', 'num_working': 'WORKING_ADULTS', 'usd_amount': 'HOURLY_WAGE'
+	})
+	living_wage_df.CHILDREN = living_wage_df.CHILDREN.astype(int)
+	living_wage_df['AS_OF_DATE'] = date.today()
+	return living_wage_df
+
+def transform_expense_df(expense_df):
 	expense_df.usd_amount = expense_df.usd_amount.apply(lambda x: x.replace(',', '')).astype(float)
 	expense_df.num_children = expense_df.num_children.astype(int)
 	expense_df['as_of_date'] = date.today()
@@ -40,15 +43,16 @@ def transform_expense_data(expense_df):
 	})
 	return expense_df
 
-def join_expense_and_household(expense_df, household_df):
-	joined = expense_df.merge(household_df, on=['CHILDREN', 'ADULTS', 'WORKING_ADULTS'])
-	joined = joined[['CATEGORY', 'AMOUNT', 'COUNTY', 'AS_OF_DATE', 'HOUSEHOLD_ID']]
-	return joined
-
-def load_expense_data_to_snowflake(conn, joined):
-	write_pandas(conn, joined, 'ANNUAL_EXPENSE')
 
 def main(event, context):
+
+	bucket_name = os.getenv('BUCKET_NAME')
+	client = boto3.client(
+		's3', 
+		endpoint_url='https://s3.amazonaws.com',
+		aws_access_key_id=os.getenv('ACCESS_KEY'),
+		aws_secret_access_key=os.getenv('SECRET_ACCESS_KEY')
+	)
 	conn = snowflake.connector.connect(
 		user=os.getenv('SNOWFLAKE_USERNAME'),
 		password=os.getenv('SNOWFLAKE_PASSWORD'),
@@ -57,11 +61,27 @@ def main(event, context):
 		database=os.getenv('DATABASE'),
 		schema=os.getenv('SCHEMA')
 	)
-	expense_df = get_expense_data()
-	household_df = get_household_data(conn)
-	expense_df = transform_expense_data(expense_df)
-	joined = join_expense_and_household(expense_df, household_df)
-	load_expense_data_to_snowflake(conn, joined)
+
+	# Get data from S3 and Snowflake
+	household_df = get_household_df(conn)
+	expense_df = get_df_from_s3(client, bucket_name, 'expenses')
+	living_wage_df = get_df_from_s3(client, bucket_name, 'living_wage')
+
+	# Transform
+	expense_df = transform_expense_df(expense_df)
+	living_wage_df = transform_living_wage_df(living_wage_df)
+
+	# Join
+	expense_df = expense_df.merge(household_df, on=['CHILDREN', 'ADULTS', 'WORKING_ADULTS'])
+	living_wage_df = living_wage_df.merge(household_df, on=['CHILDREN', 'ADULTS', 'WORKING_ADULTS'])
+
+	# Filter
+	expense_df = expense_df[['CATEGORY', 'AMOUNT', 'COUNTY', 'AS_OF_DATE', 'HOUSEHOLD_ID']]
+	living_wage_df = living_wage_df[['WAGE_LEVEL', 'HOURLY_WAGE', 'HOUSEHOLD_ID', 'COUNTY']]
+
+	# Load to Snowflake
+	write_pandas(conn, expense_df, 'ANNUAL_EXPENSE')
+	write_pandas(conn, living_wage_df, 'WAGE')
 	return {'statusCode': 200}
 
 
