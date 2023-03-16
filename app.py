@@ -12,7 +12,7 @@ load_dotenv()
 def get_df_from_s3(client, bucket_name, category):
 	# TODO make the prefix dynamic. use current date?
 	objects_metadata = client.list_objects(
-		Bucket=bucket_name, Prefix='real_estate/cost_of_living/2023-03-15'
+		Bucket=bucket_name, Prefix='real_estate/cost_of_living/2023-03-16'
 	)
 	keys = [obj['Key'] for obj in objects_metadata['Contents'] if category in obj['Key']]
 	objects = [client.get_object(Bucket=bucket_name, Key=key) for key in keys]
@@ -77,7 +77,7 @@ def main(event, context):
 
 	# Filter
 	expense_df = expense_df[['CATEGORY', 'AMOUNT', 'COUNTY', 'AS_OF_DATE', 'HOUSEHOLD_ID']]
-	living_wage_df = living_wage_df[['WAGE_LEVEL', 'HOURLY_WAGE', 'HOUSEHOLD_ID', 'COUNTY']]
+	living_wage_df = living_wage_df[['WAGE_LEVEL', 'HOURLY_WAGE', 'HOUSEHOLD_ID', 'COUNTY', 'AS_OF_DATE']]
 
 	# Load to Snowflake
 	write_pandas(conn, expense_df, 'ANNUAL_EXPENSE')
