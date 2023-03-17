@@ -1,5 +1,6 @@
 import os
 import boto3
+import json
 import snowflake.connector
 import pandas as pd
 from io import StringIO
@@ -9,10 +10,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def get_df_from_s3(client, bucket_name, category):
-	# TODO make the prefix dynamic. use current date?
+def get_df_from_s3(client, bucket_name, category, extract_date):
 	objects_metadata = client.list_objects(
-		Bucket=bucket_name, Prefix='real_estate/cost_of_living/2023-03-17'
+		Bucket=bucket_name, Prefix=f'real_estate/cost_of_living/{extract_date}'
 	)
 	keys = [obj['Key'] for obj in objects_metadata['Contents'] if category in obj['Key']]
 	objects = [client.get_object(Bucket=bucket_name, Key=key) for key in keys]
@@ -51,8 +51,7 @@ def transform_annual_salary_df(annual_salary_df):
     return annual_salary_df
 
 
-def main(event, context):
-
+def main(event, context):	
 	bucket_name = os.getenv('BUCKET_NAME')
 	client = boto3.client(
 		's3', 
@@ -68,12 +67,14 @@ def main(event, context):
 		database=os.getenv('DATABASE'),
 		schema=os.getenv('SCHEMA')
 	)
+	event_data = json.loads(event['body'])
+	extract_date = event_data['extractDate']
 
 	# Get data from S3 and Snowflake
 	household_df = get_household_df(conn)
-	expense_df = get_df_from_s3(client, bucket_name, 'expenses')
-	living_wage_df = get_df_from_s3(client, bucket_name, 'living_wage')
-	annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries')
+	expense_df = get_df_from_s3(client, bucket_name, 'expenses', extract_date)
+	living_wage_df = get_df_from_s3(client, bucket_name, 'living_wage', extract_date)
+	annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries', extract_date)
 
 	# Transform
 	expense_df = transform_expense_df(expense_df)
@@ -93,7 +94,3 @@ def main(event, context):
 	write_pandas(conn, living_wage_df, 'WAGE')
 	write_pandas(conn, annual_salary_df, 'ANNUAL_SALARY')
 	return {'statusCode': 200}
-
-
-if __name__ == '__main__':
-	main(None, None)
