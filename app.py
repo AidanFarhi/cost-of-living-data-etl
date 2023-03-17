@@ -12,7 +12,7 @@ load_dotenv()
 def get_df_from_s3(client, bucket_name, category):
 	# TODO make the prefix dynamic. use current date?
 	objects_metadata = client.list_objects(
-		Bucket=bucket_name, Prefix='real_estate/cost_of_living/2023-03-16'
+		Bucket=bucket_name, Prefix='real_estate/cost_of_living/2023-03-17'
 	)
 	keys = [obj['Key'] for obj in objects_metadata['Contents'] if category in obj['Key']]
 	objects = [client.get_object(Bucket=bucket_name, Key=key) for key in keys]
@@ -43,6 +43,13 @@ def transform_expense_df(expense_df):
 	})
 	return expense_df
 
+def transform_annual_salary_df(annual_salary_df):
+    annual_salary_df = annual_salary_df.rename(columns={
+        'occupational_area': 'OCCUPATION', 'typical_annual_salary': 'SALARY', 'county': 'COUNTY'
+    })
+    annual_salary_df['AS_OF_DATE'] = date.today()
+    return annual_salary_df
+
 
 def main(event, context):
 
@@ -66,10 +73,12 @@ def main(event, context):
 	household_df = get_household_df(conn)
 	expense_df = get_df_from_s3(client, bucket_name, 'expenses')
 	living_wage_df = get_df_from_s3(client, bucket_name, 'living_wage')
+	annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries')
 
 	# Transform
 	expense_df = transform_expense_df(expense_df)
 	living_wage_df = transform_living_wage_df(living_wage_df)
+	annual_salary_df = transform_annual_salary_df(annual_salary_df)
 
 	# Join
 	expense_df = expense_df.merge(household_df, on=['CHILDREN', 'ADULTS', 'WORKING_ADULTS'])
@@ -82,6 +91,7 @@ def main(event, context):
 	# Load to Snowflake
 	write_pandas(conn, expense_df, 'ANNUAL_EXPENSE')
 	write_pandas(conn, living_wage_df, 'WAGE')
+	write_pandas(conn, annual_salary_df, 'ANNUAL_SALARY')
 	return {'statusCode': 200}
 
 
