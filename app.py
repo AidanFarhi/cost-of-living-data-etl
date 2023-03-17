@@ -67,9 +67,7 @@ def main(event, context):
 		database=os.getenv('DATABASE'),
 		schema=os.getenv('SCHEMA')
 	)
-	event_data = json.loads(event['body'])
-	extract_date = event_data['extractDate']
-
+	extract_date = event['extractDate']
 	# Get data from S3 and Snowflake
 	household_df = get_household_df(conn)
 	expense_df = get_df_from_s3(client, bucket_name, 'expenses', extract_date)

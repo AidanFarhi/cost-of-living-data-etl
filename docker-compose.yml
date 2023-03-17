@@ -1,7 +1,8 @@
 version: "3.9"
 services:
-  scraper:
-    build: 
+  cost-of-living-data-loader:
+    build:
       context: .
-      dockerfile: Dockerfile
-    network_mode: host
+      dockerfile: Dockerfile.dev
+    ports:
+      - "9000:8080"

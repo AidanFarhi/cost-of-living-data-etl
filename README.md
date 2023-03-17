@@ -1,16 +1,31 @@
-## This script loads cost of living data from S3 and loads it to Snowflake.
+## This script loads cost of living data from S3 to Snowflake.
 
-This code depends on a .env file placed in the root of the project with the following environment variables:
+#### To run locally
+
+Set all these environment variables in a .env file
 
 ```
 SNOWFLAKE_USERNAME
 SNOWFLAKE_PASSWORD
 SNOWFLAKE_ACCOUNT
+WAREHOUSE
+DATABASE
+SCHEMA
 BUCKET_NAME
-AWS_ACCESS_KEY
-AWS_SECRET_ACCESS_KEY
+ACCESS_KEY
+SECRET_ACCESS_KEY
 ```
 
-### Command to run script.
+Build and run the docker container
 
 `docker compose up --build`
+
+*If you encounter a 403 during this step, try restarting docker hub and runnning this:
+
+`aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws`
+
+Post an event to trigger the script
+
+`curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"extractDate": "2023-03-17"}'`
+
+
