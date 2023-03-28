@@ -1,6 +1,5 @@
 import os
 import boto3
-import json
 import snowflake.connector
 import pandas as pd
 from io import StringIO
@@ -30,17 +29,18 @@ def transform_living_wage_df(living_wage_df):
 	})
 	living_wage_df.CHILDREN = living_wage_df.CHILDREN.astype(int)
 	living_wage_df['AS_OF_DATE'] = date.today()
+	living_wage_df.COUNTY = living_wage_df.COUNTY.apply(lambda x: x + ' COUNTY')
 	return living_wage_df
 
 def transform_expense_df(expense_df):
 	expense_df.usd_amount = expense_df.usd_amount.apply(lambda x: x.replace(',', '')).astype(float)
 	expense_df.num_children = expense_df.num_children.astype(int)
-	expense_df['as_of_date'] = date.today()
+	expense_df['AS_OF_DATE'] = date.today()
 	expense_df = expense_df.rename(columns={
 		'num_children': 'CHILDREN', 'num_adults': 'ADULTS', 'num_working': 'WORKING_ADULTS',
-		'expense_category': 'CATEGORY', 'usd_amount': 'AMOUNT', 'as_of_date': 'AS_OF_DATE', 
-		'county': 'COUNTY'
+		'expense_category': 'CATEGORY', 'usd_amount': 'AMOUNT', 'county': 'COUNTY'
 	})
+	expense_df.COUNTY = expense_df.COUNTY.apply(lambda x: x + ' COUNTY')
 	return expense_df
 
 def transform_annual_salary_df(annual_salary_df):
@@ -48,6 +48,7 @@ def transform_annual_salary_df(annual_salary_df):
         'occupational_area': 'OCCUPATION', 'typical_annual_salary': 'SALARY', 'county': 'COUNTY'
     })
     annual_salary_df['AS_OF_DATE'] = date.today()
+    annual_salary_df.COUNTY = annual_salary_df.COUNTY.apply(lambda x: x + ' COUNTY')
     return annual_salary_df
 
 
