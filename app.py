@@ -18,18 +18,17 @@ def get_df_from_s3(client, bucket_name, category, extract_date):
 	df = pd.concat([pd.read_csv(StringIO(obj['Body'].read().decode('utf-8'))) for obj in objects])
 	return df
 
-def get_household_df(conn):
-	household_df = pd.read_sql('SELECT * FROM HOUSEHOLD', conn)
-	return household_df
-
 def transform_living_wage_df(living_wage_df):
+	living_wage_df = living_wage_df[living_wage_df['wage_level'].str.contains('LIVING')]
 	living_wage_df = living_wage_df.rename(columns={
-		'wage_level': 'WAGE_LEVEL', 'county': 'COUNTY', 'num_children': 'CHILDREN',
-		'num_adults': 'ADULTS', 'num_working': 'WORKING_ADULTS', 'usd_amount': 'HOURLY_WAGE'
+		'num_children': 'NUMBER_OF_CHILDREN', 'num_adults': 'NUMBER_OF_ADULTS', 'county': 'COUNTY',
+		'num_working': 'NUMBER_OF_WORKING_ADULTS', 'usd_amount': 'HOURLY_WAGE'
 	})
-	living_wage_df.CHILDREN = living_wage_df.CHILDREN.astype(int)
-	living_wage_df['AS_OF_DATE'] = date.today()
+	living_wage_df.NUMBER_OF_CHILDREN = living_wage_df.NUMBER_OF_CHILDREN.astype(int)
 	living_wage_df.COUNTY = living_wage_df.COUNTY.apply(lambda x: x + ' COUNTY')
+	cols = ['COUNTY', 'NUMBER_OF_ADULTS', 'NUMBER_OF_CHILDREN', 'NUMBER_OF_WORKING_ADULTS', 'HOURLY_WAGE']
+	living_wage_df = living_wage_df[cols]
+	living_wage_df['SNAPSHOT_DATE'] = date.today()
 	return living_wage_df
 
 def transform_expense_df(expense_df):
@@ -69,27 +68,22 @@ def main(event, context):
 		schema=os.getenv('SCHEMA')
 	)
 	extract_date = event['extractDate']
+
 	# Get data from S3 and Snowflake
-	household_df = get_household_df(conn)
-	expense_df = get_df_from_s3(client, bucket_name, 'expenses', extract_date)
 	living_wage_df = get_df_from_s3(client, bucket_name, 'living_wage', extract_date)
-	annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries', extract_date)
+	# expense_df = get_df_from_s3(client, bucket_name, 'expenses', extract_date)
+	# annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries', extract_date)
 
 	# Transform
-	expense_df = transform_expense_df(expense_df)
 	living_wage_df = transform_living_wage_df(living_wage_df)
-	annual_salary_df = transform_annual_salary_df(annual_salary_df)
+	# expense_df = transform_expense_df(expense_df)
+	# annual_salary_df = transform_annual_salary_df(annual_salary_df)
 
-	# Join
-	expense_df = expense_df.merge(household_df, on=['CHILDREN', 'ADULTS', 'WORKING_ADULTS'])
-	living_wage_df = living_wage_df.merge(household_df, on=['CHILDREN', 'ADULTS', 'WORKING_ADULTS'])
-
-	# Filter
-	expense_df = expense_df[['CATEGORY', 'AMOUNT', 'COUNTY', 'AS_OF_DATE', 'HOUSEHOLD_ID']]
-	living_wage_df = living_wage_df[['WAGE_LEVEL', 'HOURLY_WAGE', 'HOUSEHOLD_ID', 'COUNTY', 'AS_OF_DATE']]
+	# TODO: Add location_id via join to living_wage, annual_salary, and annual_expense
 
 	# Load to Snowflake
-	write_pandas(conn, expense_df, 'ANNUAL_EXPENSE')
-	write_pandas(conn, living_wage_df, 'WAGE')
-	write_pandas(conn, annual_salary_df, 'ANNUAL_SALARY')
+	# write_pandas(conn, expense_df, 'ANNUAL_EXPENSE')
+	# write_pandas(conn, living_wage_df, 'WAGE')
+	# write_pandas(conn, annual_salary_df, 'ANNUAL_SALARY')
+	
 	return {'statusCode': 200}
