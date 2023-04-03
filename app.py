@@ -42,13 +42,13 @@ def transform_annual_expense_df(annual_expense_df):
 	annual_expense_df['SNAPSHOT_DATE'] = date.today()
 	return annual_expense_df
 
-def transform_annual_salary_df(annual_salary_df):
-    annual_salary_df = annual_salary_df.rename(columns={
+def transform_typical_annual_salary_df(typical_annual_salary_df):
+    typical_annual_salary_df = typical_annual_salary_df.rename(columns={
         'occupational_area': 'OCCUPATION', 'typical_annual_salary': 'SALARY', 'county': 'COUNTY'
     })
-    annual_salary_df['AS_OF_DATE'] = date.today()
-    annual_salary_df.COUNTY = annual_salary_df.COUNTY.apply(lambda x: x + ' COUNTY')
-    return annual_salary_df
+    typical_annual_salary_df['SNAPSHOT_DATE'] = date.today()
+    typical_annual_salary_df.COUNTY = typical_annual_salary_df.COUNTY.apply(lambda x: x + ' COUNTY')
+    return typical_annual_salary_df
 
 
 def main(event, context):	
@@ -72,21 +72,22 @@ def main(event, context):
 	# Get data from S3 and Snowflake
 	living_wage_df = get_df_from_s3(client, bucket_name, 'living_wage', extract_date)
 	annual_expense_df = get_df_from_s3(client, bucket_name, 'expenses', extract_date)
-	# annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries', extract_date)
+	typical_annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries', extract_date)
 
 	# Transform
 	living_wage_df = transform_living_wage_df(living_wage_df)
 	annual_expense_df = transform_annual_expense_df(annual_expense_df)
-	# annual_salary_df = transform_annual_salary_df(annual_salary_df)
-	
+	typical_annual_salary_df = transform_typical_annual_salary_df(typical_annual_salary_df)
+
 	print(living_wage_df.head())
 	print(annual_expense_df.head())
+	print(typical_annual_salary_df.head())
 
-	# TODO: Add location_id via join to living_wage, annual_salary, and annual_expense
+	# TODO: Add location_id via join to living_wage, typical_annual_salary, and annual_expense
 
 	# Load to Snowflake
 	# write_pandas(conn, expense_df, 'ANNUAL_EXPENSE')
 	# write_pandas(conn, living_wage_df, 'WAGE')
-	# write_pandas(conn, annual_salary_df, 'ANNUAL_SALARY')
+	# write_pandas(conn, typical_annual_salary_df, 'ANNUAL_SALARY')
 
 	return {'statusCode': 200}
