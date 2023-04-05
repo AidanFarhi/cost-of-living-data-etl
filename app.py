@@ -18,38 +18,37 @@ def get_df_from_s3(client, bucket_name, category, extract_date):
 	df = pd.concat([pd.read_csv(StringIO(obj['Body'].read().decode('utf-8'))) for obj in objects])
 	return df
 
-def get_household_df(conn):
-	household_df = pd.read_sql('SELECT * FROM HOUSEHOLD', conn)
-	return household_df
-
 def transform_living_wage_df(living_wage_df):
+	living_wage_df = living_wage_df[living_wage_df['wage_level'].str.contains('LIVING')]
 	living_wage_df = living_wage_df.rename(columns={
-		'wage_level': 'WAGE_LEVEL', 'county': 'COUNTY', 'num_children': 'CHILDREN',
-		'num_adults': 'ADULTS', 'num_working': 'WORKING_ADULTS', 'usd_amount': 'HOURLY_WAGE'
+		'num_children': 'NUMBER_OF_CHILDREN', 'num_adults': 'NUMBER_OF_ADULTS', 'county': 'COUNTY',
+		'num_working': 'NUMBER_OF_WORKING_ADULTS', 'usd_amount': 'HOURLY_WAGE'
 	})
-	living_wage_df.CHILDREN = living_wage_df.CHILDREN.astype(int)
-	living_wage_df['AS_OF_DATE'] = date.today()
+	living_wage_df.NUMBER_OF_CHILDREN = living_wage_df.NUMBER_OF_CHILDREN.astype(int)
 	living_wage_df.COUNTY = living_wage_df.COUNTY.apply(lambda x: x + ' COUNTY')
+	cols = ['COUNTY', 'NUMBER_OF_ADULTS', 'NUMBER_OF_CHILDREN', 'NUMBER_OF_WORKING_ADULTS', 'HOURLY_WAGE']
+	living_wage_df = living_wage_df[cols]
+	living_wage_df['SNAPSHOT_DATE'] = date.today()
 	return living_wage_df
 
-def transform_expense_df(expense_df):
-	expense_df.usd_amount = expense_df.usd_amount.apply(lambda x: x.replace(',', '')).astype(float)
-	expense_df.num_children = expense_df.num_children.astype(int)
-	expense_df['AS_OF_DATE'] = date.today()
-	expense_df = expense_df.rename(columns={
-		'num_children': 'CHILDREN', 'num_adults': 'ADULTS', 'num_working': 'WORKING_ADULTS',
+def transform_annual_expense_df(annual_expense_df):
+	annual_expense_df.usd_amount = annual_expense_df.usd_amount.apply(lambda x: x.replace(',', '')).astype(float)
+	annual_expense_df = annual_expense_df.rename(columns={
+		'num_children': 'NUMBER_OF_CHILDREN', 'num_adults': 'NUMBER_OF_ADULTS', 'num_working': 'NUMBER_OF_WORKING_ADULTS',
 		'expense_category': 'CATEGORY', 'usd_amount': 'AMOUNT', 'county': 'COUNTY'
 	})
-	expense_df.COUNTY = expense_df.COUNTY.apply(lambda x: x + ' COUNTY')
-	return expense_df
+	annual_expense_df.NUMBER_OF_CHILDREN = annual_expense_df.NUMBER_OF_CHILDREN.astype(int)
+	annual_expense_df.COUNTY = annual_expense_df.COUNTY.apply(lambda x: x + ' COUNTY')
+	annual_expense_df['SNAPSHOT_DATE'] = date.today()
+	return annual_expense_df
 
-def transform_annual_salary_df(annual_salary_df):
-    annual_salary_df = annual_salary_df.rename(columns={
+def transform_typical_annual_salary_df(typical_annual_salary_df):
+    typical_annual_salary_df = typical_annual_salary_df.rename(columns={
         'occupational_area': 'OCCUPATION', 'typical_annual_salary': 'SALARY', 'county': 'COUNTY'
     })
-    annual_salary_df['AS_OF_DATE'] = date.today()
-    annual_salary_df.COUNTY = annual_salary_df.COUNTY.apply(lambda x: x + ' COUNTY')
-    return annual_salary_df
+    typical_annual_salary_df['SNAPSHOT_DATE'] = date.today()
+    typical_annual_salary_df.COUNTY = typical_annual_salary_df.COUNTY.apply(lambda x: x + ' COUNTY')
+    return typical_annual_salary_df
 
 
 def main(event, context):	
@@ -69,27 +68,42 @@ def main(event, context):
 		schema=os.getenv('SCHEMA')
 	)
 	extract_date = event['extractDate']
+
 	# Get data from S3 and Snowflake
-	household_df = get_household_df(conn)
-	expense_df = get_df_from_s3(client, bucket_name, 'expenses', extract_date)
 	living_wage_df = get_df_from_s3(client, bucket_name, 'living_wage', extract_date)
-	annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries', extract_date)
+	annual_expense_df = get_df_from_s3(client, bucket_name, 'expenses', extract_date)
+	typical_annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries', extract_date)
+
+	# Pull location data from Snowflake
+	location_df = pd.read_sql("SELECT location_id, county FROM dim_location WHERE state = 'DE'", conn)
 
 	# Transform
-	expense_df = transform_expense_df(expense_df)
 	living_wage_df = transform_living_wage_df(living_wage_df)
-	annual_salary_df = transform_annual_salary_df(annual_salary_df)
+	annual_expense_df = transform_annual_expense_df(annual_expense_df)
+	typical_annual_salary_df = transform_typical_annual_salary_df(typical_annual_salary_df)
 
-	# Join
-	expense_df = expense_df.merge(household_df, on=['CHILDREN', 'ADULTS', 'WORKING_ADULTS'])
-	living_wage_df = living_wage_df.merge(household_df, on=['CHILDREN', 'ADULTS', 'WORKING_ADULTS'])
+	# Add location_id each data set
+	typical_annual_salary_merged_df = typical_annual_salary_df.merge(location_df, on='COUNTY', how='inner')
+	living_wage_merged_df = living_wage_df.merge(location_df, on='COUNTY', how='inner')
+	annual_expense_merged_df = annual_expense_df.merge(location_df, on='COUNTY', how='inner')
 
 	# Filter
-	expense_df = expense_df[['CATEGORY', 'AMOUNT', 'COUNTY', 'AS_OF_DATE', 'HOUSEHOLD_ID']]
-	living_wage_df = living_wage_df[['WAGE_LEVEL', 'HOURLY_WAGE', 'HOUSEHOLD_ID', 'COUNTY', 'AS_OF_DATE']]
-
+	annual_expense_keep_cols = [
+		'CATEGORY', 'NUMBER_OF_CHILDREN', 'AMOUNT', 'NUMBER_OF_ADULTS',
+		'NUMBER_OF_WORKING_ADULTS', 'SNAPSHOT_DATE', 'LOCATION_ID'
+	]
+	annual_expense_merged_df = annual_expense_merged_df[annual_expense_keep_cols]
+	living_wage_keep_cols = [
+		'NUMBER_OF_ADULTS', 'NUMBER_OF_CHILDREN','NUMBER_OF_WORKING_ADULTS', 
+		'HOURLY_WAGE', 'SNAPSHOT_DATE', 'LOCATION_ID'
+	]
+	living_wage_merged_df = living_wage_merged_df[living_wage_keep_cols]
+	typical_annual_salary_keep_cols = ['OCCUPATION', 'SALARY', 'SNAPSHOT_DATE', 'LOCATION_ID']
+	typical_annual_salary_merged_df = typical_annual_salary_merged_df[typical_annual_salary_keep_cols]
+	
 	# Load to Snowflake
-	write_pandas(conn, expense_df, 'ANNUAL_EXPENSE')
-	write_pandas(conn, living_wage_df, 'WAGE')
-	write_pandas(conn, annual_salary_df, 'ANNUAL_SALARY')
+	write_pandas(conn, annual_expense_merged_df, 'DIM_ANNUAL_EXPENSE')
+	write_pandas(conn, living_wage_merged_df, 'DIM_LIVING_WAGE')
+	write_pandas(conn, typical_annual_salary_merged_df, 'DIM_TYPICAL_ANNUAL_SALARY')
+
 	return {'statusCode': 200}
