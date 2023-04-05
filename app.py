@@ -74,20 +74,36 @@ def main(event, context):
 	annual_expense_df = get_df_from_s3(client, bucket_name, 'expenses', extract_date)
 	typical_annual_salary_df = get_df_from_s3(client, bucket_name, 'typical_salaries', extract_date)
 
+	# Pull location data from Snowflake
+	location_df = pd.read_sql("SELECT location_id, county FROM dim_location WHERE state = 'DE'", conn)
+
 	# Transform
 	living_wage_df = transform_living_wage_df(living_wage_df)
 	annual_expense_df = transform_annual_expense_df(annual_expense_df)
 	typical_annual_salary_df = transform_typical_annual_salary_df(typical_annual_salary_df)
 
-	print(living_wage_df.head())
-	print(annual_expense_df.head())
-	print(typical_annual_salary_df.head())
+	# Add location_id each data set
+	typical_annual_salary_merged_df = typical_annual_salary_df.merge(location_df, on='COUNTY', how='inner')
+	living_wage_merged_df = living_wage_df.merge(location_df, on='COUNTY', how='inner')
+	annual_expense_merged_df = annual_expense_df.merge(location_df, on='COUNTY', how='inner')
 
-	# TODO: Add location_id via join to living_wage, typical_annual_salary, and annual_expense
-
+	# Filter
+	annual_expense_keep_cols = [
+		'CATEGORY', 'NUMBER_OF_CHILDREN', 'AMOUNT', 'NUMBER_OF_ADULTS',
+		'NUMBER_OF_WORKING_ADULTS', 'SNAPSHOT_DATE', 'LOCATION_ID'
+	]
+	annual_expense_merged_df = annual_expense_merged_df[annual_expense_keep_cols]
+	living_wage_keep_cols = [
+		'NUMBER_OF_ADULTS', 'NUMBER_OF_CHILDREN','NUMBER_OF_WORKING_ADULTS', 
+		'HOURLY_WAGE', 'SNAPSHOT_DATE', 'LOCATION_ID'
+	]
+	living_wage_merged_df = living_wage_merged_df[living_wage_keep_cols]
+	typical_annual_salary_keep_cols = ['OCCUPATION', 'SALARY', 'SNAPSHOT_DATE', 'LOCATION_ID']
+	typical_annual_salary_merged_df = typical_annual_salary_merged_df[typical_annual_salary_keep_cols]
+	
 	# Load to Snowflake
-	# write_pandas(conn, expense_df, 'ANNUAL_EXPENSE')
-	# write_pandas(conn, living_wage_df, 'WAGE')
-	# write_pandas(conn, typical_annual_salary_df, 'ANNUAL_SALARY')
+	write_pandas(conn, annual_expense_merged_df, 'DIM_ANNUAL_EXPENSE')
+	write_pandas(conn, living_wage_merged_df, 'DIM_LIVING_WAGE')
+	write_pandas(conn, typical_annual_salary_merged_df, 'DIM_TYPICAL_ANNUAL_SALARY')
 
 	return {'statusCode': 200}
