@@ -1,4 +1,4 @@
-## This script loads cost of living data from S3 to Snowflake.
+## An ETL job that extracts data from an S3 data lake, transforms it, and loads it to Snowflake.
 
 #### To run locally
 
